@@ -21,14 +21,15 @@ export class Player extends Entity {
         inputs.registerHandler('keyup', this.keyup.bind(this))
         inputs.registerHandler('mousedown', (e) => {
             if (e.button == 0 && this.gun) {
-                this.gun.shoot()
-                this.recoilAnimation()
+                this.shoot()
             } else if (e.button == 2 && this.gun) {
                 this.aim(true)
             }
         })
         inputs.registerHandler('mouseup', (e) => {
-            if (e.button == 2 && this.gun) {
+            if (e.button == 0 && this.gun) {
+                this.state.shooting = false
+            } else if (e.button == 2 && this.gun) {
                 this.aim(false)
             }
         })
@@ -87,20 +88,16 @@ export class Player extends Entity {
         this.offset = new THREE.Vector3(0, -1.6, 0)
         this.rotate = new THREE.Vector3(0, 0, 0)
 
-        this.lastState = {
-            movement: '',
-            aiming: false
-        }
-
         this.state = {
             movement: 'idle',
-            changingArmsPosition: false,
-            aiming: false
+            aiming: false,
+            reloading: false,
+            shooting: false
         }
+        this.lastState = Object.assign({}, this.state);
 
-        this.intervals = {
-            changingArmPosition: null
-        }
+        this.changingArmsPosition = false
+        this.requestToChangeArmPosition = false
     }
 
     recoilAnimation() {
@@ -139,54 +136,69 @@ export class Player extends Entity {
                 this.offset.z += recoilOffset.z;
                 this.offset.x += recoilOffset.x;
 
-                this.camera.rotateX(3 * recoil(time).x / maxTime)
+                const worldQuaternion = new THREE.Quaternion();
+                this.camera.getWorldQuaternion(worldQuaternion);
+
+                const forwardVector = new THREE.Vector3(0, 0, -1);
+
+                forwardVector.applyQuaternion(worldQuaternion);
+                const xrot = new THREE.Euler().setFromVector3(forwardVector).y;
+                if (xrot < 0.7) {
+                    const factor = 1 - (xrot / 0.7)
+                    this.camera.rotateX(factor * 3 * recoil(time).x / maxTime)
+                }
 
                 time += dt; // Increment time
             }
         }, dt);
     }
-
-    aim(aiming) {
-        this.state.aiming = aiming
-        if (aiming) {
-            this.state.movement = 'walking'
-            const targetOffset = offsetValues.AK47.position; // Going to aiming position
-            const targetRotation = offsetValues.AK47.rotation; // Aiming rotation
-            this.changeArmPosition(targetOffset, targetRotation)
-            this.animator.play('fps_standard')
-        } else {
-            this.changeArmPosition()
-        }
-    }
     
-    changeArmPosition(position = new THREE.Vector3(0, -1.6, 0), rotation = new THREE.Vector3(0, 0, 0), dt = 10, maxTime = 200) {
-        if (this.state.changingArmsPosition) clearInterval(this.intervals.changingArmPosition)
+    changeArmPosition(position = new THREE.Vector3(0, -1.6, 0), rotation = new THREE.Vector3(0, 0, 0), dt = 5, maxTime = 150) {
+        if (
+            position.x == this.offset.x &&
+            position.y == this.offset.y &&
+            position.z == this.offset.z &&
+            rotation.x == this.rotate.x &&
+            rotation.y == this.rotate.y &&
+            rotation.z == this.rotate.z
+        ) {
+            return
+        }
+        if (this.schangingArmsPosition) {
+            this.requestToChangeArmPosition = true
+        }
+    
         const startOffset = this.offset.clone()
         const startRotation = this.rotate.clone()
         
         let dx = position.x - this.offset.x
         let dy = position.y - this.offset.y
         let dz = position.z - this.offset.z
-
+    
         let dxr = rotation.x - this.rotate.x
         let dyr = rotation.y - this.rotate.y
         let dzr = rotation.z - this.rotate.z
-
+    
         let t = 0;
-        this.intervals.changingArmPosition = setInterval(() => {
-            this.state.changingArmsPosition = true
+        const interval = setInterval(() => {
+            this.schangingArmsPosition = true
             t += dt;
-            if (t >= maxTime) {
-                clearInterval(this.intervals.changingArmPosition)
+            const percentage = t / maxTime;
+    
+            if (this.requestToChangeArmPosition) {
+                clearInterval(interval)
+                this.requestToChangeArmPosition = false
+            }
+
+            if (percentage >= 1) {
                 this.offset.copy(position);
                 this.rotate.copy(rotation);
-                this.state.changingArmsPosition = false
+                clearInterval(interval);
+                this.schangingArmsPosition = false;
                 return;
             }
     
-            const percentage = t / maxTime;
-    
-            // Transition the offsets smoothly based on percentage
+            // Smoothly transition offsets and rotations
             this.offset.x = startOffset.x + dx * percentage;
             this.offset.y = startOffset.y + dy * percentage;
             this.offset.z = startOffset.z + dz * percentage;
@@ -197,15 +209,60 @@ export class Player extends Entity {
     
         }, dt);
     }
+    
 
     onStateChange() {
         if (!this.state.aiming) {
+            if (this.state.reloading) {
+                if (this.state.movement == 'running') this.state.movement = 'walking'
+                return
+            }
             if (this.state.movement == 'running') {
                 this.changeArmPosition(new THREE.Vector3(-0.1, -1.35, -0.2))
+                this.animator.play('fps_run')
             } else if (this.state.movement == 'walking' || this.state.movement == 'idle') {
                 this.changeArmPosition()
+                this.animator.play('fps_standard')
             }
+        } else {
+            if (this.state.movement == 'running') this.state.movement = 'walking'
+            const targetOffset = offsetValues.AK47.position; // Going to aiming position
+            const targetRotation = offsetValues.AK47.rotation; // Aiming rotation
+            this.changeArmPosition(targetOffset, targetRotation)
+            this.animator.play('fps_standard')
         }
+    }
+
+    shoot() {
+        if (this.gun.inCooldown || this.state.reloading || this.state.movement == 'running') return
+        this.gun.shoot()
+        this.recoilAnimation()
+        this.state.shooting = true
+
+        const interval = setInterval(() => {
+            if (this.state.shooting === false) {
+                clearInterval(interval)
+                return
+            }
+            this.gun.shoot()
+            this.recoilAnimation()
+        }, this.gun.cooldownTime)
+    }
+
+    reload() {
+        this.gun.reload()
+        this.animator.play('reloading')
+        this.state.reloading = true
+        this.aim(false)
+        setTimeout(() => {
+            this.state.reloading = false
+        }, this.gun.reloadTime)
+    }
+
+    aim(aiming) {
+        if (this.state.reloading && aiming === true) return
+        this.state.aiming = aiming
+        this.changeArmPosition()
     }
     
 
@@ -237,8 +294,7 @@ export class Player extends Entity {
                 this.inputs[key] = true
                 break
             case 'r':
-                this.gun.reload()
-                this.animator.play('reloading')
+                this.reload()
                 break;
             case 'g':
                 this.animator.play('grenade')
@@ -246,9 +302,7 @@ export class Player extends Entity {
                 this.changeArmPosition(new THREE.Vector3(0, -1.7, -0.2), new THREE.Vector3(0.3, 0, 0))
                 break;
             case ' ':
-                if (this.onGround) {
-                    this.velocity.y = 10
-                }
+                this.velocity.y = 10
                 this.state.movement = 'jumping'
                 break;
         }
@@ -262,7 +316,7 @@ export class Player extends Entity {
             case 'd':
             case 'a':
                 this.state.movement = 'idle'
-                if (!this.inputs.w || key == 'w') this.animator.play('fps_standard')
+                //if (!this.inputs.w || key == 'w') this.animator.play('fps_standard')
                 this.inputs[key] = false;
                 break;
         }
@@ -272,7 +326,6 @@ export class Player extends Entity {
         switch (key) {
             case 'w':
                 if (this.state.aiming) return
-                this.animator.play('fps_run')
                 this.state.movement = 'running'
                 break;
             case 's':
@@ -312,11 +365,12 @@ export class Player extends Entity {
         }
 
         if (
-            this.state.movement != this.lastState.movement ||
-            this.state.aiming != this.lastState.aiming
+            this.state.movement !== this.lastState.movement ||
+            this.state.aiming !== this.lastState.aiming ||
+            this.state.shooting !== this.lastState.shooting
         ) {
             this.onStateChange()
-            this.lastState.movement = this.state.movement
+            this.lastState = Object.assign({}, this.state);
         }
 
 

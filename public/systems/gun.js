@@ -1,7 +1,8 @@
 import * as THREE from '../imports/three.module.js'
 import { GLTFLoader } from '../imports/GLTFLoader.js'
 import { World } from './world.js'
-import { particles } from '../main.js'
+import { entities, particles } from '../main.js'
+import { Entity } from '../components/entity.js'
 
 
 /* TO DO
@@ -24,6 +25,10 @@ export class Gun extends THREE.Group {
         this.scale.setScalar(2000)
         this.position.set(-100, 500, 200)
         this.rotation.set(0.1, Math.PI, Math.PI / 2 - 0.07)
+
+        this.cooldownTime = 100
+        this.reloadTime = 3000
+        this.inCooldown = false
 
         this.playerRotation = new THREE.Euler()
         this.gunMagazine = new THREE.Object3D()
@@ -86,11 +91,42 @@ export class Gun extends THREE.Group {
     }
 
     throwGrenade() {
-        this.visible = false
-        return
-        setTimeout(() => {
-            this.visible = true
-        }, 3000)
+    }
+
+    createEmptyCasing() {
+        const casing = new Entity()
+        loader.load('models/guns/7.62_casing.glb', (gltf) => {
+            const model = gltf.scene
+            casing.scale.setScalar(0.2)
+            const direction = new THREE.Vector3()
+            this.camera.getWorldDirection(direction)
+            let angleY = Math.atan2(direction.x, direction.z)
+            casing.rotation.y = angleY
+            casing.position.copy(this.getWorldPosition(new THREE.Vector3()).clone().add(direction.clone().multiplyScalar(0.5)))
+            casing.add(model)
+            this.scene.add(casing)
+
+            casing.rotation.x = Math.random()
+            casing.height = 0.05
+            casing.radius = 0.05
+            casing.groundFriction = 10
+
+
+            const vec = new THREE.Vector3();
+            this.camera.getWorldDirection(vec);
+            vec.y = 2 + Math.random();
+            vec.normalize();
+            vec.cross(this.camera.up);
+            vec.add(direction.clone().multiplyScalar( - Math.random()))
+            casing.velocity.copy(vec.clone().multiplyScalar(5))
+            casing.acceleration.y = -10
+            casing.timeToLive = 5000
+            entities.push(casing)
+
+            setTimeout(() => {
+                this.scene.remove(casing)
+            }, 15000)
+        })
     }
 
     reload() {
@@ -102,12 +138,19 @@ export class Gun extends THREE.Group {
             setTimeout(() => {
                 this.gunMagazine.visible = true
                 this.leftarmMagazine.visible = false
-            }, 1200)
-        }, 400)
+            }, (this.reloadTime - 1400) * 3 / 4)
+        }, (this.reloadTime - 1400) / 4)
     }
     
 
     shoot() {
+        this.inCooldown = true
+        setTimeout(() => {
+            this.inCooldown = false
+        }, this.cooldownTime)
+
+        this.createEmptyCasing()
+
         const position = this.camera.position.clone()
         const forwardVector = new THREE.Vector3()
         this.camera.getWorldDirection(forwardVector)

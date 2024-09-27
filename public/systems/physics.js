@@ -1,4 +1,5 @@
 import * as THREE from '../imports/three.module.js'
+import { entities } from '../main.js'
 
 export class Physics {
     constructor (world, player) {
@@ -15,6 +16,10 @@ export class Physics {
     update(dt) {
         this.accumulator += dt;
         while (this.accumulator >= this.stepSize) {
+            entities.forEach(entity => {
+                entity.update(this.stepSize)
+                this.detectCollisions(entity);
+            })
             this.player.update(this.stepSize)
             this.player.velocity.y -= this.GRAVITY
             this.detectCollisions(this.player);

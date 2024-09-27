@@ -52,7 +52,7 @@ testLoader.load('models/buildings/house_2.glb', gltf => {
     scene.add(model)
 })
 
-export const bullets = []
+export const entities = []
 
 
 
@@ -63,8 +63,10 @@ world.addPrism(6, 1, 7, 1, 2, 1)
 world.addPrism(6, 1, 8, 1, 3, 1)
 world.addPrism(6, 1, 9, 1, 2, 1)
 
+/*
 world.renderBlock(1, 1, 1, 0.375, 0, 0, 0.25, 1, 1)
 world.renderBlock(1, 1, 2, 0, 0, 0, 1, 1, 1)
+*/
 
 
 /* TO DO
@@ -85,8 +87,11 @@ function animate() {
     graphics.update()
     particles.update(dt)
 
-    bullets.forEach(bullet => {
-        bullet.update(dt)
+    entities.forEach(entity => {
+        entity.update(dt)
+        if (entity.timeToLive <= 0) {
+            entities.splice(entities.indexOf(entity), 1)
+        }
     })
 
     renderer.render(scene, camera)
