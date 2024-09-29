@@ -28,7 +28,7 @@ export class Physics {
     }
 
     detectCollisions(entity) {
-        entity.onGround = false
+        //entity.onGround = false
         const candidates = this.broadPhase(entity)
         if (candidates.length > 0) {
             const collisions = this.narrowPhase(entity, candidates)

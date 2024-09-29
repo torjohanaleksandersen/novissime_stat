@@ -1,5 +1,6 @@
 import * as THREE from '../imports/three.module.js'
 import { Entity } from '../components/entity.js'
+import { entities } from '../main.js'
 
 
 export class ParticleEffect {
@@ -7,6 +8,7 @@ export class ParticleEffect {
         this.scene = scene
 
         this.entities = []
+        this.grenadeParticles = []
     }
 
     bulletWallCollision(position, normal) {
@@ -16,7 +18,7 @@ export class ParticleEffect {
                 return 0.1 + Math.random() * 0.1
             }
             const geometry = new THREE.BoxGeometry(w(), w(), w())
-            const material = new THREE.MeshBasicMaterial({
+            const material = new THREE.MeshLambertMaterial({
                 color: new THREE.Color(n, n, n),
             })
             const mesh = new THREE.Mesh(geometry, material)
@@ -143,7 +145,7 @@ export class ParticleEffect {
         }, 20)
         
         
-        let dt = 1, t0 = 0, t = 3000
+        let dt = 20, t0 = 0, t = 500
         const interval = setInterval(() => {
             t0 += dt
 
@@ -162,9 +164,99 @@ export class ParticleEffect {
         }, dt)
     }
 
+    grenadeExplosion(position) {
+        function newParticle() {
+            const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2)
+            const material = new THREE.MeshLambertMaterial({color: 0xffffff, transparent: true})
+            const mesh = new THREE.Mesh(geometry, material)
+            mesh.position.copy(position)
+            return mesh
+        }
+        for (let i = 0; i < 200; i++) {
+            const mesh = newParticle()
+            mesh.scale.setScalar(Math.random() * 2 + 0.5)
+
+            const particle = new Entity()
+            particle.add(mesh)
+            particle.timeToLive = 4000
+            const direction = new THREE.Vector3(Math.random() * 2 - 1, Math.random() + 0.5, Math.random() * 2 - 1).multiplyScalar(0.1)
+            particle.position.copy(direction.clone())
+            particle.velocity.copy(direction.clone().multiplyScalar(Math.random() * 20 + 2))
+            particle.acceleration.y = -1
+            mesh.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2)
+
+            particle.userData.s0 = particle.position.clone()
+            particle.userData.t0 = 0
+            particle.userData.randomColorOffset = Math.random() * 0.1
+            if (Math.random() < 0.3) {
+                particle.userData.type = 'gray'
+            } else {
+                particle.userData.type = 'yellow'
+            }
+            entities.push(particle)
+            this.grenadeParticles.push(particle)
+
+            this.scene.add(particle)
+            
+        }
+    }
+
+    updateGrenadeParticles(dt) {
+        this.grenadeParticles.forEach(particle => {
+            if (particle.timeToLive <= 0) {
+                this.grenadeParticles.splice(this.grenadeParticles.indexOf(particle), 1)
+                this.scene.remove(particle)
+            }
+            particle.timeToLive -= dt * 1000
+            const distance = particle.position.clone().sub(particle.userData.s0.clone()).length()
+            const maxDistance = 10
+            let percent = distance / maxDistance + particle.userData.t0
+            if (percent > 1) percent = 1
+
+            particle.userData.t0 += dt
+
+            const r = particle.userData.randomColorOffset
+            function rgb(t) {
+                t = Math.max(0, Math.min(1, t));
+                let red, green, blue;
+            
+                if (t <= 0.3) {
+                    // Transition from White to Orange
+                    red = 1;
+                    green = 1 - 2 * t;  // Decrease green
+                    blue = 1 - 2 * t;   // Decrease blue
+                } else if (t <= 0.6) {
+                    // Transition from Orange to Red
+                    red = 1;
+                    green = (1 - t) * 0.647; // Interpolating green
+                    blue = 0; // Blue stays 0
+                } else {
+                    red = 1 - t;
+                    green = 1 - t;
+                    blue = 1 - t
+                }
+            
+                return new THREE.Color(red, green, blue);
+            }
+
+
+            const mesh = particle.children[0]
+            if (particle.userData.type == 'gray') {
+                mesh.material.color = new THREE.Color(0.5 - percent * 0.5 + r, 0.5 - percent * 0.5 + r, 0.5 - percent * 0.5 + r)
+                mesh.material.opacity = (1 - percent) * (1 + r * 500)
+            } else {
+                mesh.material.color = rgb(percent)
+                mesh.material.opacity = (1 - percent) * (1 + r * 500)
+            }
+
+        })
+    }
+
     update(dt) {
         this.entities.forEach(entity => {
             entity.update(dt)
         })
+
+        this.updateGrenadeParticles(dt)
     }
 }

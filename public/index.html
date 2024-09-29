@@ -12,8 +12,29 @@
 </head>
 <body>
     <div class="crosshair"></div>
+    <div class="player-state-container">
+        <div class="gun-name-container">
+            <p>AK47</p>
+        </div>
+        <div class="ammo-container">
+            <div class="ammo-left">
+                <div class="ammo-in-gun">
+                    <p id="in-gun">30</p>
+                </div>
+            </div>
+            <div class="ammo-right">
+                <div class="ammo-in-inventory">
+                    <span> / </span><p id="in-inventory">50</p>
+                </div>
+            </div>
+        </div>
+        <div class="health-container">
+
+        </div>
+    </div>
 </body>
 
 <script type="module" src="systems/inputs.js"></script>
+<script type="module" src="systems/user-interface.js"></script>
 
 </html>

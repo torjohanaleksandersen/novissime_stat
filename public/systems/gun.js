@@ -5,15 +5,6 @@ import { entities, particles } from '../main.js'
 import { Entity } from '../components/entity.js'
 
 
-/* TO DO
-
-1. Gjør koden mer clean og flytt over particle effects til fila dedikert for den (particles.js)
-2. Reload
-
-
-*/
-
-
 
 const loader = new GLTFLoader()
 export class Gun extends THREE.Group {
@@ -29,6 +20,9 @@ export class Gun extends THREE.Group {
         this.cooldownTime = 100
         this.reloadTime = 3000
         this.inCooldown = false
+
+        this.ammo = 30
+        this.magSize = 30
 
         this.playerRotation = new THREE.Euler()
         this.gunMagazine = new THREE.Object3D()
@@ -90,9 +84,6 @@ export class Gun extends THREE.Group {
         this.leftarmMagazine.quaternion.copy(localMagQuaternion);
     }
 
-    throwGrenade() {
-    }
-
     createEmptyCasing() {
         const casing = new Entity()
         loader.load('models/guns/7.62_casing.glb', (gltf) => {
@@ -109,7 +100,7 @@ export class Gun extends THREE.Group {
             casing.rotation.x = Math.random()
             casing.height = 0.05
             casing.radius = 0.05
-            casing.groundFriction = 10
+            casing.groundFriction = 1.3
 
 
             const vec = new THREE.Vector3();
@@ -117,7 +108,7 @@ export class Gun extends THREE.Group {
             vec.y = 2 + Math.random();
             vec.normalize();
             vec.cross(this.camera.up);
-            vec.add(direction.clone().multiplyScalar( - Math.random()))
+            vec.add(direction.clone().multiplyScalar(-0.2 - Math.random() * 0.3))
             casing.velocity.copy(vec.clone().multiplyScalar(5))
             casing.acceleration.y = -10
             casing.timeToLive = 5000
@@ -129,25 +120,38 @@ export class Gun extends THREE.Group {
         })
     }
 
-    reload() {
+    reload(inventory) {
         setTimeout(() => {
-            this.matchPosition()
-            this.gunMagazine.visible = false
-            this.leftarmMagazine.visible = true
-
+            this.matchPosition();
+            this.gunMagazine.visible = false;
+            this.leftarmMagazine.visible = true;
+    
             setTimeout(() => {
-                this.gunMagazine.visible = true
-                this.leftarmMagazine.visible = false
-            }, (this.reloadTime - 1400) * 3 / 4)
-        }, (this.reloadTime - 1400) / 4)
+                this.gunMagazine.visible = true;
+                this.leftarmMagazine.visible = false;
+    
+                // Calculate how much ammo to reload
+                let neededAmmo = this.magSize - this.ammo;  // Ammo needed to fill the magazine
+                let ammoToLoad = Math.min(neededAmmo, inventory.ammo);  // Load only what's available in the inventory
+    
+                // Increase the gun's ammo and reduce the inventory
+                this.ammo += ammoToLoad;
+                inventory.ammo -= ammoToLoad;
+    
+            }, (this.reloadTime - 1400) * 3 / 4);
+        }, (this.reloadTime - 1400) / 4);
     }
+    
     
 
     shoot() {
+        if (this.ammo <= 0) return
         this.inCooldown = true
         setTimeout(() => {
             this.inCooldown = false
         }, this.cooldownTime)
+
+        this.ammo -= 1
 
         this.createEmptyCasing()
 

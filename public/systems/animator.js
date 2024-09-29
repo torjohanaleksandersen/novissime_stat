@@ -1,13 +1,14 @@
 import * as THREE from '../imports/three.module.js'
 import { FBXLoader } from '../imports/FBXLoader.js'
 
-const animations = ['fps_standard', 'fps_run', 'reloading', 'grenade']
+const animations = ['fps_standard', 'fps_run', 'reloading', 'throwable']
 
 export class Animator {
     constructor(mixer) {
         this.mixer = mixer
         this.animations = {}
         this.currentAnimationPlaying = ''
+        this.timeMultiplayer = 1
 
         this.loader = new FBXLoader()
         this.loader.setPath('animations/')
@@ -29,6 +30,10 @@ export class Animator {
         })
     }
 
+    pauseAnimation() {
+        this.animations[this.currentAnimationPlaying].paused = true
+    }
+
     play(key) {
         if (!this.animations[key] || key === this.currentAnimationPlaying) return
 
@@ -41,6 +46,7 @@ export class Animator {
     }
 
     update(dt) {
+        dt *= this.timeMultiplayer
         this.mixer.update(dt)
     }
 }

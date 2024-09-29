@@ -1,11 +1,12 @@
 import { Entity } from "../components/entity.js";
 import * as THREE from '../imports/three.module.js'
-import { inputs } from "../main.js";
+import { entities, inputs, userInterface } from "../main.js";
 import { FBXLoader } from "../imports/FBXLoader.js";
 import { Animator } from "./animator.js";
 import { GLTFLoader } from "../imports/GLTFLoader.js";
 import { Gun } from "./gun.js";
 import { offsetValues } from "../data/offset_values.js";
+import { Grenade } from "./grenade.js";
 
 
 export class Player extends Entity {
@@ -49,6 +50,11 @@ export class Player extends Entity {
             a: false,
             d: false
         }
+        this.performThrow = false
+
+        this.inventory = {
+            ammo: 50
+        }
 
         
         const loader = new GLTFLoader()
@@ -76,12 +82,20 @@ export class Player extends Entity {
             let leftarm = null
             bones.forEach(bone => {if (bone.name == 'mixamorigLeftHand') leftarm = bone})
 
-
             bones.forEach(bone => {
                 if (bone.name == 'mixamorigRightHand') {
                     const model = new Gun(this.scene, this.camera, leftarm)
                     this.gun = model
                     bone.add(model)
+
+
+                    const grenade = new Grenade(this.scene).clone()
+                    this.grenade = grenade
+                    grenade.scale.setScalar(7)
+                    grenade.position.z = 300
+                    grenade.rotation.y = 2
+                    grenade.visible = false
+                    bone.add(grenade)
                 }
             })
         })
@@ -92,7 +106,8 @@ export class Player extends Entity {
             movement: 'idle',
             aiming: false,
             reloading: false,
-            shooting: false
+            shooting: false,
+            throwing: false
         }
         this.lastState = Object.assign({}, this.state);
 
@@ -153,7 +168,7 @@ export class Player extends Entity {
         }, dt);
     }
     
-    changeArmPosition(position = new THREE.Vector3(0, -1.6, 0), rotation = new THREE.Vector3(0, 0, 0), dt = 5, maxTime = 150) {
+    updateArmTransform(position = new THREE.Vector3(0, -1.6, 0), rotation = new THREE.Vector3(0, 0, 0), dt = 5, maxTime = 150) {
         if (
             position.x == this.offset.x &&
             position.y == this.offset.y &&
@@ -213,56 +228,108 @@ export class Player extends Entity {
 
     onStateChange() {
         if (!this.state.aiming) {
-            if (this.state.reloading) {
+            if (this.state.reloading || this.state.throwing) {
                 if (this.state.movement == 'running') this.state.movement = 'walking'
                 return
             }
             if (this.state.movement == 'running') {
-                this.changeArmPosition(new THREE.Vector3(-0.1, -1.35, -0.2))
+                this.updateArmTransform(new THREE.Vector3(-0.1, -1.35, -0.2))
                 this.animator.play('fps_run')
             } else if (this.state.movement == 'walking' || this.state.movement == 'idle') {
-                this.changeArmPosition()
+                this.updateArmTransform()
                 this.animator.play('fps_standard')
             }
         } else {
+            if (this.state.throwing) return
             if (this.state.movement == 'running') this.state.movement = 'walking'
             const targetOffset = offsetValues.AK47.position; // Going to aiming position
             const targetRotation = offsetValues.AK47.rotation; // Aiming rotation
-            this.changeArmPosition(targetOffset, targetRotation)
+            this.updateArmTransform(targetOffset, targetRotation)
             this.animator.play('fps_standard')
         }
     }
 
     shoot() {
-        if (this.gun.inCooldown || this.state.reloading || this.state.movement == 'running') return
+        if (this.gun.ammo <= 0) return
+        if (this.gun.inCooldown || this.state.reloading || this.state.movement == 'running' || this.state.throwing) return
         this.gun.shoot()
         this.recoilAnimation()
         this.state.shooting = true
 
+        userInterface.updateAmmo(this.gun.ammo, this.inventory.ammo)
+
         const interval = setInterval(() => {
-            if (this.state.shooting === false) {
+            if (this.state.shooting === false || this.gun.ammo <= 0) {
                 clearInterval(interval)
                 return
             }
             this.gun.shoot()
             this.recoilAnimation()
+            userInterface.updateAmmo(this.gun.ammo, this.inventory.ammo)
         }, this.gun.cooldownTime)
     }
 
     reload() {
-        this.gun.reload()
+        if (this.inventory.ammo == 0 || this.gun.ammo == this.gun.magSize) return
+        if (this.state.throwing || this.state.reloading) return
+        this.gun.reload(this.inventory)
         this.animator.play('reloading')
         this.state.reloading = true
         this.aim(false)
         setTimeout(() => {
             this.state.reloading = false
+            userInterface.updateAmmo(this.gun.ammo, this.inventory.ammo)
         }, this.gun.reloadTime)
     }
 
     aim(aiming) {
         if (this.state.reloading && aiming === true) return
         this.state.aiming = aiming
-        this.changeArmPosition()
+        this.updateArmTransform()
+    }
+
+    throw() {
+        if (this.state.throwing || this.state.reloading) return
+        this.state.throwing = true
+        this.updateArmTransform()
+        this.animator.play('throwable')
+
+        setTimeout(() => {
+            if (!this.state.throwing) return
+            this.gun.visible = false
+            this.grenade.visible = true
+            setTimeout(() => {
+                this.animator.timeMultiplayer = 0
+
+                const interval = setInterval(() => {
+                    if (this.performThrow) {
+                        this.animator.timeMultiplayer = 1
+                        performThrow(this.camera, this.scene)
+                        clearInterval(interval)
+                        setTimeout(() => {
+                            this.gun.visible = true
+                            this.grenade.visible = false
+                            this.state.throwing = false
+                            this.performThrow = false
+                        }, 1000)
+                    }
+                }, 100)
+    
+            }, 1000)
+        }, 400)
+
+        function performThrow(camera, scene) {
+            setTimeout(() => {
+                const lookdirection = new THREE.Vector3()
+                camera.getWorldDirection(lookdirection)
+                const grenade = new Grenade(10000, scene)
+                grenade.position.copy(camera.position.clone())
+                grenade.velocity.copy(lookdirection.clone().multiplyScalar(5))
+                grenade.acceleration.y = -2
+                entities.push(grenade)
+                scene.add(grenade)
+            }, 500)
+        }
     }
     
 
@@ -284,7 +351,7 @@ export class Player extends Entity {
     }
 
     keydown(e) {
-        const key = e.key
+        const key = e.key.toLowerCase()
 
         switch (key) {
             case 'w':
@@ -297,27 +364,29 @@ export class Player extends Entity {
                 this.reload()
                 break;
             case 'g':
-                this.animator.play('grenade')
-                this.gun.throwGrenade()
-                this.changeArmPosition(new THREE.Vector3(0, -1.7, -0.2), new THREE.Vector3(0.3, 0, 0))
+                this.throw()
                 break;
             case ' ':
-                this.velocity.y = 10
-                this.state.movement = 'jumping'
+                if (this.onGround) {
+                    this.velocity.y = 10
+                    this.state.movement = 'jumping'
+                }
                 break;
         }
     }
 
     keyup(e) {
-        const key = e.key
+        const key = e.key.toLowerCase()
         switch (key) {
             case 'w':
             case 's':
             case 'd':
             case 'a':
                 this.state.movement = 'idle'
-                //if (!this.inputs.w || key == 'w') this.animator.play('fps_standard')
                 this.inputs[key] = false;
+                break;
+            case 'g':
+                this.performThrow = true
                 break;
         }
     }
@@ -364,13 +433,11 @@ export class Player extends Entity {
             }
         }
 
-        if (
-            this.state.movement !== this.lastState.movement ||
-            this.state.aiming !== this.lastState.aiming ||
-            this.state.shooting !== this.lastState.shooting
-        ) {
-            this.onStateChange()
-            this.lastState = Object.assign({}, this.state);
+        for (const attribute in this.state) {
+            if (this.state[attribute] != this.lastState[attribute]) {
+                this.onStateChange()
+                this.lastState = Object.assign({}, this.state);
+            }
         }
 
 
@@ -387,7 +454,11 @@ export class Player extends Entity {
             this.inputs.a || 
             this.inputs.d
         ) {
-            targetSpeed = this.maxSpeed; // Full speed if moving
+            if (this.state.movement == 'running') {
+                targetSpeed = this.maxSpeed * 1.5
+            } else if (this.state.movement == 'walking') {
+                targetSpeed = this.maxSpeed
+            }
         }
     
         // Smooth acceleration towards target speed

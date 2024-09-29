@@ -8,6 +8,8 @@ import { Loader } from './systems/model-loader.js';
 import { Graphics } from './systems/graphics.js'
 import { GLTFLoader } from './imports/GLTFLoader.js';
 import { ParticleEffect } from './systems/particle-effect.js';
+import { UserInterface } from './systems/user-interface.js';
+import { Enemy } from './systems/enemy.js';
 
 const socket = io()
 
@@ -23,6 +25,7 @@ document.body.appendChild(renderer.domElement);
 
 export const inputs = new Inputs(camera, renderer)
 export const loader = new Loader()
+export const userInterface = new UserInterface()
 
 const graphics = new Graphics(scene)
 
@@ -32,6 +35,8 @@ scene.add(world)
 const player = new Player(camera, scene)
 scene.add(player.model)
 const physics = new Physics(world, player)
+
+const enemy = new Enemy()
 
 export const particles = new ParticleEffect(scene)
 
@@ -56,24 +61,52 @@ export const entities = []
 
 
 
-world.addPrism(0, 0, 0, 20, 1, 20)
+world.addPrism(0, 0, 0, 50, 1, 50)
+
+
+/*
 world.addPrism(5, 1, 5, 1, 2, 2)
 world.addPrism(6, 1, 6, 1, 3, 1)
 world.addPrism(6, 1, 7, 1, 2, 1)
 world.addPrism(6, 1, 8, 1, 3, 1)
 world.addPrism(6, 1, 9, 1, 2, 1)
 
-/*
 world.renderBlock(1, 1, 1, 0.375, 0, 0, 0.25, 1, 1)
 world.renderBlock(1, 1, 2, 0, 0, 0, 1, 1, 1)
 */
 
+const players = new Map()
+socket.on('game-state-update', data => {
+    data.forEach(packet => {
+        const [id, position, rotation] = packet
 
-/* TO DO
+        if (!players.has(id)) {
+            /*
+            const geometry = new THREE.CapsuleGeometry(player.radius, player.height - player.radius * 2)
+            const material = new THREE.MeshLambertMaterial({color: 0xfa0568})
+            const mesh = new THREE.Mesh(geometry, material)
+            */
+            const mesh = enemy.mesh
+            players.set(id, mesh)
+            scene.add(mesh)
+        } else {
+            const mesh = players.get(id)
+            mesh.position.set(...position)
+            mesh.rotation.y = rotation[1]
+        }
+    })
 
-gjør sånn at armene er et child av kameraet sånn at det følger dens rotasjon osv
+    socket.emit('player-state-update', [vectorToArray(player.position), vectorToArray(player.model.rotation)])
+})
 
-*/
+socket.on('player-disconnected', (id) => {
+    scene.remove(players.get(id))
+    players.delete(id)
+})
+
+function vectorToArray(vec) {
+    return [vec.x, vec.y, vec.z]
+}
 
 
 let previousTime = performance.now()

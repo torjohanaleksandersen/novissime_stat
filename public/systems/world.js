@@ -6,7 +6,7 @@ export class World extends THREE.Object3D {
     constructor () {
         super()
 
-        const width = 20, height = 20, depth = 20;
+        const width = 50, height = 2, depth = 50;
         this.blocks = new Array(width).fill(0).map(() =>
             new Array(height).fill(0).map(() => new Array(depth).fill(0))
         );
