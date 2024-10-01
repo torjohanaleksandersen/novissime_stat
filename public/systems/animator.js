@@ -1,7 +1,7 @@
 import * as THREE from '../imports/three.module.js'
 import { FBXLoader } from '../imports/FBXLoader.js'
 
-const animations = ['fps_standard', 'fps_run', 'reloading', 'throwable']
+const animations = ['fps_standard', 'fps_run', 'reloading', 'throwable', 'walk_aim']
 
 export class Animator {
     constructor(mixer) {

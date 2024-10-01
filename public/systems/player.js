@@ -394,7 +394,6 @@ export class Player extends Entity {
     handleKeyDown(key) {
         switch (key) {
             case 'w':
-                if (this.state.aiming) return
                 this.state.movement = 'running'
                 break;
             case 's':
@@ -519,6 +518,7 @@ export class Player extends Entity {
         this.camera.getWorldDirection(cameraDirection).normalize();
         const yrot = Math.atan2(cameraDirection.x, cameraDirection.z);
         this.model.rotation.y = yrot;
+        this.yrot = yrot
     
         super.update(dt);
         this.camera.position.copy(this.position.clone().add(new THREE.Vector3(0, 0.7, 0)));

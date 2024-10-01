@@ -4,7 +4,7 @@
 
 export class ServerState {
     constructor() {
-        this.tickSpeed = 100
+        this.tickSpeed = 50
 
         this.users = []
     }
@@ -12,7 +12,7 @@ export class ServerState {
     updateAllClients() {
         const information = []
         this.users.forEach(user => {
-            information.push([user.socket.id, user.position, user.rotation])
+            information.push([user.socket.id, user.position, user.rotation, user.yrot, user.state])
         })
         this.users.forEach(user => {
             const informationForUser = information.filter(element => {return element[0] != user.socket.id})

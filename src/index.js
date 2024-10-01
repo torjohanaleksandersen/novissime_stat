@@ -18,7 +18,7 @@ io.on('connection', socket => {
 
     socket.on('disconnect', () => {
         server.users.splice(server.users.indexOf(user), 1)
-        server.sendMsgToAllClients('player-disconnected', socket.id)
+        server.sendMsgToAllClients('player-disconnected', socket.id)  
     })
 })
 

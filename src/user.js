@@ -10,11 +10,11 @@ export class User {
 
         this.position = []
         this.rotation = []
-
+        this.yrot = 0
+        this.state = {}
 
         this.socket.on('player-state-update', (data) => {
-            this.position = data[0]
-            this.rotation = data[1]
+            [this.position, this.rotation, this.yrot, this.state] = data
         })
     }
 }

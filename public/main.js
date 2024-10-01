@@ -24,7 +24,6 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 document.body.appendChild(renderer.domElement);
 
 export const inputs = new Inputs(camera, renderer)
-export const loader = new Loader()
 export const userInterface = new UserInterface()
 
 const graphics = new Graphics(scene)
@@ -42,6 +41,7 @@ export const particles = new ParticleEffect(scene)
 
 const controls = new PointerLockControls(camera, renderer.domElement)
 inputs.registerHandler('mousedown', () => {
+    controls.pointerSpeed = 0.5
     controls.lock()
 })
 
@@ -75,33 +75,50 @@ world.renderBlock(1, 1, 1, 0.375, 0, 0, 0.25, 1, 1)
 world.renderBlock(1, 1, 2, 0, 0, 0, 1, 1, 1)
 */
 
-const players = new Map()
+const enemies = new Map()
+const loader = new GLTFLoader()
+
 socket.on('game-state-update', data => {
     data.forEach(packet => {
-        const [id, position, rotation] = packet
+        const [id, position, rotation, yrot, state] = packet
 
-        if (!players.has(id)) {
-            /*
-            const geometry = new THREE.CapsuleGeometry(player.radius, player.height - player.radius * 2)
-            const material = new THREE.MeshLambertMaterial({color: 0xfa0568})
-            const mesh = new THREE.Mesh(geometry, material)
-            */
-            const mesh = enemy.mesh
-            players.set(id, mesh)
-            scene.add(mesh)
+        if (!enemies.has(id)) {
+            enemies.set(id, 'loading')
+            loader.load('models/characters/Entente.character.glb', (gltf) => {
+                const model = gltf.scene
+                model.scale.setScalar(0.01)
+                model.traverse((obj) => {
+                    if (obj.isMesh) {
+                        obj.frustumCulled = false
+                        if (obj.material) {
+                            obj.material.roughness = 1
+                            obj.material.needsUpdate = true
+                        }
+                    }
+                })
+                const enemy = new Enemy(model, scene, player.height)
+                enemies.set(id, enemy)
+                scene.add(enemy.mesh)
+            })
         } else {
-            const mesh = players.get(id)
-            mesh.position.set(...position)
-            mesh.rotation.y = rotation[1]
+            const enemy = enemies.get(id)
+            if (enemy == 'loading') return
+            const mesh = enemy.mesh
+            mesh.rotation.y = yrot
+            enemy.yrot = yrot
+            enemy.rotation.set(...rotation)
+            enemy.interpolatePositions(position)
+
+            enemy.updateState(state)
         }
     })
 
-    socket.emit('player-state-update', [vectorToArray(player.position), vectorToArray(player.model.rotation)])
+    socket.emit('player-state-update', [vectorToArray(player.position), vectorToArray(player.model.rotation), player.yrot, player.state])
 })
 
 socket.on('player-disconnected', (id) => {
-    scene.remove(players.get(id))
-    players.delete(id)
+    scene.remove(enemies.get(id).mesh)
+    enemies.delete(id)
 })
 
 function vectorToArray(vec) {
@@ -125,6 +142,11 @@ function animate() {
         if (entity.timeToLive <= 0) {
             entities.splice(entities.indexOf(entity), 1)
         }
+    })
+
+    enemies.forEach(enemy => {
+        if (enemy == 'loading') return
+        enemy.update(dt)
     })
 
     renderer.render(scene, camera)
