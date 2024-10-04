@@ -10,6 +10,7 @@ import { GLTFLoader } from './imports/GLTFLoader.js';
 import { ParticleEffect } from './systems/particle-effect.js';
 import { UserInterface } from './systems/user-interface.js';
 import { Enemy } from './systems/enemy.js';
+import { Network } from './systems/network.js';
 
 const socket = io()
 
@@ -35,8 +36,6 @@ const player = new Player(camera, scene)
 scene.add(player.model)
 const physics = new Physics(world, player)
 
-const enemy = new Enemy()
-
 export const particles = new ParticleEffect(scene)
 
 const controls = new PointerLockControls(camera, renderer.domElement)
@@ -44,6 +43,8 @@ inputs.registerHandler('mousedown', () => {
     controls.pointerSpeed = 0.5
     controls.lock()
 })
+
+
 
 const testLoader = new GLTFLoader()
 
@@ -75,7 +76,8 @@ world.renderBlock(1, 1, 1, 0.375, 0, 0, 0.25, 1, 1)
 world.renderBlock(1, 1, 2, 0, 0, 0, 1, 1, 1)
 */
 
-const enemies = new Map()
+export const enemies = new Map()
+export const network = new Network(socket, enemies)
 const loader = new GLTFLoader()
 
 socket.on('game-state-update', data => {
@@ -97,6 +99,8 @@ socket.on('game-state-update', data => {
                     }
                 })
                 const enemy = new Enemy(model, scene, player.height)
+                enemy.mesh.userData.objectType = 'enemy'
+                enemy.mesh.userData.id = id
                 enemies.set(id, enemy)
                 scene.add(enemy.mesh)
             })
@@ -116,10 +120,36 @@ socket.on('game-state-update', data => {
     socket.emit('player-state-update', [vectorToArray(player.position), vectorToArray(player.model.rotation), player.yrot, player.state])
 })
 
+socket.on('player-hit-confirmed', (data) => {
+    const [id, position] = data
+    return
+    particles.bloodEffect(new THREE.Vector3(...position))
+})
+
+socket.on('youre-hit', (health) => {
+    player.health = health
+    userInterface.updateHealth(health)
+})
+
+socket.on('youre-dead', () => {
+    player.state.dead = true
+    userInterface.updateHealth(0)
+    player.animator.play('death')
+
+    setTimeout(() => {
+        player.health = 100
+        player.state.dead = false
+    }, 3000)
+})
+
 socket.on('player-disconnected', (id) => {
     scene.remove(enemies.get(id).mesh)
     enemies.delete(id)
 })
+
+
+
+
 
 function vectorToArray(vec) {
     return [vec.x, vec.y, vec.z]

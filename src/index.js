@@ -10,7 +10,7 @@ const io = new Server(httpServer);
 
 const PORT = process.env.PORT || 5000;
 
-const server = new ServerState()
+export const server = new ServerState()
 
 io.on('connection', socket => {
     const user = new User(socket)
@@ -18,7 +18,7 @@ io.on('connection', socket => {
 
     socket.on('disconnect', () => {
         server.users.splice(server.users.indexOf(user), 1)
-        server.sendMsgToAllClients('player-disconnected', socket.id)  
+        server.sendMsgToClients('player-disconnected', socket.id)  
     })
 })
 

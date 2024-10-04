@@ -20,7 +20,15 @@ export class ServerState {
         })
     }
 
-    sendMsgToAllClients(key, data) {
+    sendMsgToClients(key, data, exeptionID = false) {
+        if (exeptionID !== false) {
+            this.users.forEach(user => {
+                if (user.socket.id !== exeptionID) {
+                    user.socket.emit(key, data)
+                }
+            })
+            return
+        }
         this.users.forEach(user => {
             user.socket.emit(key, data)
         })

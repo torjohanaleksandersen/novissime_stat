@@ -11,6 +11,59 @@ export class ParticleEffect {
         this.grenadeParticles = []
     }
 
+    bloodEffect(position) {
+        for (let i = 0; i < 20; i++) {
+            const color = Math.random() * 0.3
+            function scale() {
+                return 0.01 + Math.random() * 0.05
+            }
+            const geometry = new THREE.BoxGeometry(scale(), scale(), scale())
+            const material = new THREE.MeshLambertMaterial({
+                color: new THREE.Color(color, 0, 0),
+                transparent: true,
+                opacity: Math.random() * 0.2 + 0.5
+            })
+            const mesh = new THREE.Mesh(geometry, material)
+
+            function rotation() {
+                return Math.random() * Math.PI * 2
+            }
+            mesh.rotation.set(rotation(), rotation(), rotation())
+
+            const entity = new Entity()
+            entity.mesh = mesh
+
+            function positionOffset() {
+                return Math.random() * 0.1 - 0.05
+            }
+
+            entity.position.copy(position.clone().add(new THREE.Vector3(positionOffset(), positionOffset(), positionOffset())))
+            entity.velocity.set(Math.random() * 0.4, 0, Math.random() * 0.4)
+            entity.acceleration.set(0, -2, 0)
+
+            this.scene.add(mesh)
+            this.entities.push(entity)
+
+            const dt = 10, time = 5000
+            let t = 0
+
+            const interval = setInterval(() => {
+                if (t >= time) {
+                    this.entities.splice(this.entities.indexOf(entity), 1)
+                    this.scene.remove(mesh)
+                    clearInterval(interval)
+                }
+                const progress = t / time
+                const opacityDistance = mesh.material.opacity
+                console.log(opacityDistance * progress)
+
+                t += dt
+
+                mesh.material.opacity -= opacityDistance * progress
+            }, dt)
+        }
+    }
+
     bulletWallCollision(position, normal) {
         for (let i = 0; i < 5; i++) {
             const n = Math.random() * 0.2
@@ -137,8 +190,9 @@ export class ParticleEffect {
         group.add(cube(new THREE.Vector3(0, -Math.random() * 2 - 2, 0)))
         group.add(cube(new THREE.Vector3(0, -Math.random() * 2 - 2, 0)))
 
+        const lightPosition = group.position.clone().add(new THREE.Vector3(-0.2, -4, 0))
         const light = new THREE.PointLight(new THREE.Color(1, 1, 1), 50)
-        light.position.copy(position)
+        light.position.copy(lightPosition.clone())
         group.add(light)
         setTimeout(() => {
             group.remove(light)

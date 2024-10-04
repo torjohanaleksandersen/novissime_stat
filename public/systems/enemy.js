@@ -2,6 +2,7 @@ import * as THREE from '../imports/three.module.js'
 import { Animator } from './animator.js'
 import { GLTFLoader } from '../imports/GLTFLoader.js'
 import { particles } from '../main.js'
+import { enemyHitBoxValues } from '../data/enemy-hitbox.js'
 
 const loader = new GLTFLoader()
 export class Enemy {
@@ -23,6 +24,9 @@ export class Enemy {
             mesh: null
         }
         this.interpolationInterval = null
+        this.shootingPause = false
+
+        this.hitBoxes = []
 
         loader.load('models/guns/AK47.glb', (gltf) => {
             const model = gltf.scene
@@ -36,6 +40,27 @@ export class Enemy {
                     bone.add(this.gun.mesh)
                 }
             })
+            this.makeHitBox()
+        })
+    }
+
+    makeHitBox() {
+        const material = new THREE.MeshBasicMaterial({transparent: true, opacity: 0})
+        const geometry = new THREE.BoxGeometry(1000, 1000, 1000)
+        const mesh = new THREE.Mesh(geometry, material)
+        this.skeleton.bones.forEach(bone => {
+            for (const name in enemyHitBoxValues) {
+                const element = enemyHitBoxValues[name]
+                if (bone.name == name) {
+                    const box = mesh.clone()
+                    box.scale.copy(element.scale.clone())
+                    box.position.copy(element.position.clone())
+                    box.userData.bodyPart = element.name
+                    bone.add(box)
+                    this.hitBoxes.push(box)
+                }
+
+            }
         })
     }
 
@@ -52,12 +77,13 @@ export class Enemy {
             this.animator.play('reloading')
         }
 
-        if (this.state.shooting) {
-            particles.muzzleFlash(this.position, this.gun.mesh)
-            setTimeout(() => {
-
-            }, )
+        if (this.state.dead) {
+            this.animator.play('death')
         }
+    }
+
+    shot() {
+        particles.muzzleFlash(this.position, this.gun.mesh)
     }
 
     updateState(state) {

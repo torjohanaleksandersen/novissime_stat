@@ -1,7 +1,7 @@
 import * as THREE from '../imports/three.module.js'
 import { FBXLoader } from '../imports/FBXLoader.js'
 
-const animations = ['fps_standard', 'fps_run', 'reloading', 'throwable', 'walk_aim']
+const animations = ['fps_standard', 'fps_run', 'reloading', 'throwable', 'walk_aim', 'death']
 
 export class Animator {
     constructor(mixer) {
@@ -17,7 +17,7 @@ export class Animator {
             this.loader.load(key + '.fbx', animation => {
                 this.animations[key] = this.mixer.clipAction(animation.animations[0])
 
-                if (key === 'reloading') {
+                if (key === 'reloading' || key === 'death') {
                     this.animations[key].setLoop(THREE.LoopOnce)
                     this.animations[key].clampWhenFinished = true
 

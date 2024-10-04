@@ -1,6 +1,6 @@
 import { Entity } from "../components/entity.js";
 import * as THREE from '../imports/three.module.js'
-import { entities, inputs, userInterface } from "../main.js";
+import { entities, inputs, network, userInterface } from "../main.js";
 import { FBXLoader } from "../imports/FBXLoader.js";
 import { Animator } from "./animator.js";
 import { GLTFLoader } from "../imports/GLTFLoader.js";
@@ -35,7 +35,7 @@ export class Player extends Entity {
             }
         })
 
-        this.position.y = 5
+        this.position.set(20, 4, 20)
 
         this.height = 1.8
         this.radius = 0.4
@@ -107,9 +107,12 @@ export class Player extends Entity {
             aiming: false,
             reloading: false,
             shooting: false,
-            throwing: false
+            throwing: false,
+            dead: false
         }
         this.lastState = Object.assign({}, this.state);
+
+        this.health = 100
 
         this.changingArmsPosition = false
         this.requestToChangeArmPosition = false
@@ -250,12 +253,16 @@ export class Player extends Entity {
     }
 
     shoot() {
-        if (this.gun.ammo <= 0) return
+        if (this.gun.ammo <= 0) {
+            this.state.shooting = false
+            return
+        }
         if (this.gun.inCooldown || this.state.reloading || this.state.movement == 'running' || this.state.throwing) return
         this.gun.shoot()
         this.recoilAnimation()
         this.state.shooting = true
 
+        network.sendPacketToServer('player-shot')
         userInterface.updateAmmo(this.gun.ammo, this.inventory.ammo)
 
         const interval = setInterval(() => {
@@ -265,6 +272,7 @@ export class Player extends Entity {
             }
             this.gun.shoot()
             this.recoilAnimation()
+            network.sendPacketToServer('player-shot')
             userInterface.updateAmmo(this.gun.ammo, this.inventory.ammo)
         }, this.gun.cooldownTime)
     }

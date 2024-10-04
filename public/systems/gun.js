@@ -1,7 +1,7 @@
 import * as THREE from '../imports/three.module.js'
 import { GLTFLoader } from '../imports/GLTFLoader.js'
 import { World } from './world.js'
-import { entities, particles } from '../main.js'
+import { enemies, entities, network, particles } from '../main.js'
 import { Entity } from '../components/entity.js'
 
 
@@ -168,6 +168,15 @@ export class Gun extends THREE.Group {
             if (child instanceof World || child.userData.type == 'map') {
                 possibleTargets.push(child)
             }
+            if (child.userData.objectType === 'enemy') {
+                const id = child.userData.id
+                if (!id) return
+                const enemy = enemies.get(id)
+                enemy.hitBoxes.forEach(box => {
+                    box.userData.id = id
+                    possibleTargets.push(box)
+                })
+            }
         })
 
 
@@ -175,6 +184,16 @@ export class Gun extends THREE.Group {
         const result = ray.intersectObjects(possibleTargets);
         if (result.length > 0) {
             const target = result[0];
+
+            if (target.object.userData.bodyPart) {
+                const id = target.object.userData.id
+                const hitLocation = target.object.userData.bodyPart
+                
+                particles.bloodEffect(target.point)
+                network.sendPacketToServer('player-hit', [id, hitLocation, target.point])
+
+                return
+            }
 
             particles.bulletWallCollision(target.point, target.normal)
         }
