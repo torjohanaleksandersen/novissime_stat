@@ -1,7 +1,6 @@
 import * as THREE from '../imports/three.module.js'
 import { GLTFLoader } from '../imports/GLTFLoader.js'
-import { World } from './world.js'
-import { enemies, entities, network, particles } from '../main.js'
+import { audio, enemies, entities, network, particles } from '../main.js'
 import { Entity } from '../components/entity.js'
 
 
@@ -102,6 +101,9 @@ export class Gun extends THREE.Group {
             casing.radius = 0.05
             casing.groundFriction = 1.3
 
+            audio.stop('casing-hitting-ground')
+            audio.play('casing-hitting-ground', 0.1)
+
 
             const vec = new THREE.Vector3();
             this.camera.getWorldDirection(vec);
@@ -125,10 +127,12 @@ export class Gun extends THREE.Group {
             this.matchPosition();
             this.gunMagazine.visible = false;
             this.leftarmMagazine.visible = true;
+            audio.play('rifle-reload-mag-out', 0.3)
     
             setTimeout(() => {
                 this.gunMagazine.visible = true;
                 this.leftarmMagazine.visible = false;
+                audio.play('rifle-reload-mag-in', 0.3)
     
                 // Calculate how much ammo to reload
                 let neededAmmo = this.magSize - this.ammo;  // Ammo needed to fill the magazine
@@ -165,7 +169,7 @@ export class Gun extends THREE.Group {
 
         const possibleTargets = []
         this.scene.children.forEach(child => {
-            if (child instanceof World || child.userData.type == 'map') {
+            if (child.userData.type == 'map') {
                 possibleTargets.push(child)
             }
             if (child.userData.objectType === 'enemy') {
@@ -189,13 +193,15 @@ export class Gun extends THREE.Group {
                 const id = target.object.userData.id
                 const hitLocation = target.object.userData.bodyPart
                 
+                const positionPacket = [target.point.x, target.point.y, target.point.z]
                 particles.bloodEffect(target.point)
-                network.sendPacketToServer('player-hit', [id, hitLocation, target.point])
+                network.sendPacketToServer('player-hit', [id, hitLocation, positionPacket])
 
                 return
             }
 
             particles.bulletWallCollision(target.point, target.normal)
+            network.sendPacketToServer('player-shot', [[target.point.x, target.point.y, target.point.z], [target.normal.x, target.normal.y, target.normal.z]])
         }
     }
 }

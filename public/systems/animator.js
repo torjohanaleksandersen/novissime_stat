@@ -1,7 +1,15 @@
 import * as THREE from '../imports/three.module.js'
 import { FBXLoader } from '../imports/FBXLoader.js'
 
-const animations = ['fps_standard', 'fps_run', 'reloading', 'throwable', 'walk_aim', 'death']
+const animations = [
+    'fps_standard', 
+    'fps_run', 
+    'reloading',
+    'walking_reloading',
+    'throwable', 
+    'walk_aim', 
+    'death'
+]
 
 export class Animator {
     constructor(mixer) {
@@ -30,11 +38,33 @@ export class Animator {
         })
     }
 
+    switchReloadAnimation(key) {
+        const time = this.getTimeOfCurrentAnimation()
+
+        animations.forEach(_key => {
+            this.animations[_key].fadeOut(0)
+        })
+        this.animations[key].reset().fadeIn(0).play()
+        this.animations[key].time = time
+        this.currentAnimationPlaying = key
+    }
+
+    getTimeOfCurrentAnimation() {
+        return this.animations[this.currentAnimationPlaying].time
+    }
+
     pauseAnimation() {
         this.animations[this.currentAnimationPlaying].paused = true
     }
 
     play(key) {
+        if (this.currentAnimationPlaying.includes('reloading') && 
+        key.includes('reloading') && 
+        (this.currentAnimationPlaying !== key)
+        ) {
+            this.switchReloadAnimation(key)
+            return
+        }
         if (!this.animations[key] || key === this.currentAnimationPlaying) return
 
         animations.forEach(_key => {

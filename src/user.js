@@ -20,13 +20,21 @@ export class User {
             [this.position, this.rotation, this.yrot, this.state] = data
         })
 
-        this.socket.on('player-shot', () => {
+        this.socket.on('start-throw', () => {
+            server.sendMsgToClients('start-throw-confirmed', this.socket.id, this.socket.id)
+        })
+        this.socket.on('perform-throw', (lookVector) => {
+            server.sendMsgToClients('perform-throw-confirmed', [this.socket.id, lookVector], this.socket.id)
+        })
+
+        this.socket.on('player-shot', (data) => {
             if (this.shot) return
+            const [position, normal] = data
             this.shot = true
             setTimeout(() => {
                 this.shot = false
             }, 50)
-            server.sendMsgToClients('player-shot-confirmed', this.socket.id, this.socket.id)
+            server.sendMsgToClients('player-shot-confirmed', [this.socket.id, position, normal], this.socket.id)
         })
 
         this.socket.on('player-hit', data => {

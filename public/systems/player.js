@@ -1,12 +1,13 @@
 import { Entity } from "../components/entity.js";
 import * as THREE from '../imports/three.module.js'
-import { entities, inputs, network, userInterface } from "../main.js";
-import { FBXLoader } from "../imports/FBXLoader.js";
+import { audio, entities, inputs, network, particles, physics, userInterface } from "../main.js";
 import { Animator } from "./animator.js";
 import { GLTFLoader } from "../imports/GLTFLoader.js";
 import { Gun } from "./gun.js";
 import { offsetValues } from "../data/offset_values.js";
-import { Grenade } from "./grenade.js";
+import { Grenade, StunGrenade } from "./throwables.js";
+import { Capsule } from "../imports/Capsule.js";
+import { RigidBody } from "../components/rigid-body.js";
 
 
 export class Player extends Entity {
@@ -35,26 +36,31 @@ export class Player extends Entity {
             }
         })
 
-        this.position.set(20, 4, 20)
+        this.height = 1.2
+        this.radius = 0.3
 
-        this.height = 1.8
-        this.radius = 0.4
+        this.position.set(9, 3.6, 9);
+        this.collider = new Capsule(
+            this.position.clone().sub(new THREE.Vector3(0, this.height / 2, 0)),
+            this.position.clone().add(new THREE.Vector3(0, this.height / 2, 0)),
+            this.radius
+        );
 
-        this.maxSpeed = 3
-        this.accelerationValue = 10
-        this.decelerationValue = 20
-
+        
         this.inputs = {
             w: false,
             s: false,
             a: false,
             d: false
         }
+        
         this.performThrow = false
 
         this.inventory = {
-            ammo: 50
+            ammo: 1000
         }
+
+        this.grenades = {}
 
         
         const loader = new GLTFLoader()
@@ -88,14 +94,24 @@ export class Player extends Entity {
                     this.gun = model
                     bone.add(model)
 
+                    userInterface.updateAmmo(this.gun.ammo, this.inventory.ammo)
 
-                    const grenade = new Grenade(this.scene).clone()
-                    this.grenade = grenade
+
+                    const grenade = new Grenade().clone()
+                    this.grenades['frag-grenade'] = grenade
                     grenade.scale.setScalar(7)
                     grenade.position.z = 300
                     grenade.rotation.y = 2
                     grenade.visible = false
                     bone.add(grenade)
+
+                    const stunGrenade = new StunGrenade().clone()
+                    this.grenades['stun-grenade'] = stunGrenade
+                    stunGrenade.scale.setScalar(7)
+                    stunGrenade.position.z = 300
+                    stunGrenade.rotation.y = 2
+                    stunGrenade.visible = false
+                    bone.add(stunGrenade)
                 }
             })
         })
@@ -163,7 +179,7 @@ export class Player extends Entity {
                 const xrot = new THREE.Euler().setFromVector3(forwardVector).y;
                 if (xrot < 0.7) {
                     const factor = 1 - (xrot / 0.7)
-                    this.camera.rotateX(factor * 3 * recoil(time).x / maxTime)
+                    this.camera.rotateX(factor * 1.5 * recoil(time).x / maxTime)
                 }
 
                 time += dt; // Increment time
@@ -262,8 +278,8 @@ export class Player extends Entity {
         this.recoilAnimation()
         this.state.shooting = true
 
-        network.sendPacketToServer('player-shot')
         userInterface.updateAmmo(this.gun.ammo, this.inventory.ammo)
+        audio.play('rifle-single-2')
 
         const interval = setInterval(() => {
             if (this.state.shooting === false || this.gun.ammo <= 0) {
@@ -272,8 +288,8 @@ export class Player extends Entity {
             }
             this.gun.shoot()
             this.recoilAnimation()
-            network.sendPacketToServer('player-shot')
             userInterface.updateAmmo(this.gun.ammo, this.inventory.ammo)
+            audio.play('rifle-single-2')
         }, this.gun.cooldownTime)
     }
 
@@ -296,7 +312,7 @@ export class Player extends Entity {
         this.updateArmTransform()
     }
 
-    throw() {
+    throw(type) {
         if (this.state.throwing || this.state.reloading) return
         this.state.throwing = true
         this.updateArmTransform()
@@ -305,18 +321,18 @@ export class Player extends Entity {
         setTimeout(() => {
             if (!this.state.throwing) return
             this.gun.visible = false
-            this.grenade.visible = true
+            this.grenades[type].visible = true
             setTimeout(() => {
                 this.animator.timeMultiplayer = 0
 
                 const interval = setInterval(() => {
                     if (this.performThrow) {
                         this.animator.timeMultiplayer = 1
-                        performThrow(this.camera, this.scene)
+                        performThrow(this.camera, this.scene, type)
                         clearInterval(interval)
                         setTimeout(() => {
                             this.gun.visible = true
-                            this.grenade.visible = false
+                            this.grenades[type].visible = false
                             this.state.throwing = false
                             this.performThrow = false
                         }, 1000)
@@ -326,16 +342,23 @@ export class Player extends Entity {
             }, 1000)
         }, 400)
 
-        function performThrow(camera, scene) {
+        function performThrow(camera, scene, type) {
+            let model = null
+            if (type == 'stun-grenade') model = new StunGrenade().clone()
+            if (type == 'frag-grenade') model = new Grenade().clone()
             setTimeout(() => {
                 const lookdirection = new THREE.Vector3()
                 camera.getWorldDirection(lookdirection)
-                const grenade = new Grenade(10000, scene)
-                grenade.position.copy(camera.position.clone())
-                grenade.velocity.copy(lookdirection.clone().multiplyScalar(5))
-                grenade.acceleration.y = -2
-                entities.push(grenade)
-                scene.add(grenade)
+
+                model.scale.setScalar(model.throwingState.scale)
+                const rigidBody = new RigidBody(camera.position.clone(), lookdirection.clone().multiplyScalar(15), 0, 0.05, model)
+                scene.add(rigidBody)
+                physics.addRigidBody(rigidBody)
+
+                setTimeout(() => {
+                    model.explode(rigidBody.position.clone())
+                    scene.remove(rigidBody)
+                }, 5000)
             }, 500)
         }
     }
@@ -372,13 +395,25 @@ export class Player extends Entity {
                 this.reload()
                 break;
             case 'g':
-                this.throw()
+                this.throw('frag-grenade')
+                network.sendPacketToServer('start-throw')
+                break;
+            case 't':
+                this.throw('stun-grenade')
+                network.sendPacketToServer('start-throw')
+                break
+            case 'f': 
                 break;
             case ' ':
                 if (this.onGround) {
-                    this.velocity.y = 10
+                    //this.velocity.y = 4
                     this.state.movement = 'jumping'
+                    setTimeout(() => {
+                        this.state.movement = 'idle'
+                    }, 100)
                 }
+                break;
+            case 'f':
                 break;
         }
     }
@@ -394,7 +429,11 @@ export class Player extends Entity {
                 this.inputs[key] = false;
                 break;
             case 'g':
+            case 't':
                 this.performThrow = true
+                const lookdirection = new THREE.Vector3()
+                this.camera.getWorldDirection(lookdirection)
+                network.sendPacketToServer('perform-throw', [lookdirection.x, lookdirection.y, lookdirection.z])
                 break;
         }
     }
@@ -433,6 +472,10 @@ export class Player extends Entity {
     }
 
     update(dt) {
+        this.camera.position.copy(this.position.clone().add(new THREE.Vector3(0, 0.7, 0)));
+    
+        this.position.copy(this.collider.start.clone().add(new THREE.Vector3(0, this.height / 2, 0)))
+        
 
         for (const key in this.inputs) {
             if (this.inputs[key]) {
@@ -446,72 +489,6 @@ export class Player extends Entity {
                 this.lastState = Object.assign({}, this.state);
             }
         }
-
-
-        const forwardVector = this.getForwardVector();
-        const sideVector = this.getSideVector();
-
-        this.currentSpeed = new THREE.Vector2(this.velocity.x, this.velocity.z).length()
-    
-        // Determine target speed based on inputs
-        let targetSpeed = 0;
-        if (
-            this.inputs.w || 
-            this.inputs.s || 
-            this.inputs.a || 
-            this.inputs.d
-        ) {
-            if (this.state.movement == 'running') {
-                targetSpeed = this.maxSpeed * 1.5
-            } else if (this.state.movement == 'walking') {
-                targetSpeed = this.maxSpeed
-            }
-        }
-    
-        // Smooth acceleration towards target speed
-        if (this.currentSpeed < targetSpeed) {
-            this.currentSpeed += this.accelerationValue * dt; // Accelerate
-            if (this.currentSpeed > targetSpeed) {
-                this.currentSpeed = targetSpeed; // Clamp to max speed
-            }
-        } else if (this.currentSpeed > targetSpeed) {
-            this.currentSpeed -= this.decelerationValue * dt; // Decelerate
-            if (this.currentSpeed < 0) {
-                this.currentSpeed = 0; // Clamp to zero speed
-            }
-        }
-    
-        // Calculate movement vector
-        const moveVector = new THREE.Vector3();
-
-        let scalar = {
-            forward: 0,
-            side: 0
-        }
-
-        
-        if (this.inputs.w || this.inputs.s) {
-            if (this.inputs.w) scalar.forward = 1
-            if (this.inputs.s) scalar.forward = -1
-        }
-        if (this.inputs.a || this.inputs.d) {
-            if (this.inputs.d) scalar.side = 1
-            if (this.inputs.a) scalar.side = -1
-        }
-        moveVector.add(forwardVector.multiplyScalar(scalar.forward));
-        moveVector.add(sideVector.multiplyScalar(scalar.side));
-    
-        // Normalize movement vector to avoid faster diagonal movement
-        if (moveVector.length() > 1) {
-            moveVector.normalize();
-        }
-    
-        // Apply currentSpeed to the normalized moveVector
-        moveVector.multiplyScalar(this.currentSpeed);
-    
-        // Apply the velocity based on movement vector
-        this.velocity.x = moveVector.x;
-        this.velocity.z = moveVector.z;
 
         if (this.animator) this.animator.update(dt)
     
@@ -527,9 +504,6 @@ export class Player extends Entity {
         const yrot = Math.atan2(cameraDirection.x, cameraDirection.z);
         this.model.rotation.y = yrot;
         this.yrot = yrot
-    
-        super.update(dt);
-        this.camera.position.copy(this.position.clone().add(new THREE.Vector3(0, 0.7, 0)));
     
         this.updateTransform();
     }

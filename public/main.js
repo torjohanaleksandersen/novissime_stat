@@ -1,16 +1,15 @@
 import * as THREE from './imports/three.module.js'
 import { Inputs } from './systems/inputs.js';
-import { Physics } from './systems/physics.js';
 import { Player } from './systems/player.js';
-import { World } from './systems/world.js';
 import { PointerLockControls } from './imports/PointerLockControls.js'
-import { Loader } from './systems/model-loader.js';
 import { Graphics } from './systems/graphics.js'
 import { GLTFLoader } from './imports/GLTFLoader.js';
 import { ParticleEffect } from './systems/particle-effect.js';
 import { UserInterface } from './systems/user-interface.js';
 import { Enemy } from './systems/enemy.js';
 import { Network } from './systems/network.js';
+import { Physics } from './systems/physics.js';
+import { Audio } from './systems/audio.js';
 
 const socket = io()
 
@@ -21,7 +20,7 @@ renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x80a0e0);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 export const inputs = new Inputs(camera, renderer)
@@ -29,14 +28,13 @@ export const userInterface = new UserInterface()
 
 const graphics = new Graphics(scene)
 
-const world = new World()
-scene.add(world)
-
 const player = new Player(camera, scene)
+player.acceleration.y = -15
 scene.add(player.model)
-const physics = new Physics(world, player)
 
-export const particles = new ParticleEffect(scene)
+export const physics = new Physics(scene, player)
+
+export const particles = new ParticleEffect(scene, camera)
 
 const controls = new PointerLockControls(camera, renderer.domElement)
 inputs.registerHandler('mousedown', () => {
@@ -44,40 +42,20 @@ inputs.registerHandler('mousedown', () => {
     controls.lock()
 })
 
-
-
-const testLoader = new GLTFLoader()
-
-
-testLoader.load('models/buildings/house_2.glb', gltf => {
-    const model = gltf.scene
-    model.scale.setScalar(1)
-    model.position.set(10, 0.52, 10)
-    model.userData.type = 'map'
-
-    scene.add(model)
-})
-
 export const entities = []
-
-
-
-world.addPrism(0, 0, 0, 50, 1, 50)
-
-
-/*
-world.addPrism(5, 1, 5, 1, 2, 2)
-world.addPrism(6, 1, 6, 1, 3, 1)
-world.addPrism(6, 1, 7, 1, 2, 1)
-world.addPrism(6, 1, 8, 1, 3, 1)
-world.addPrism(6, 1, 9, 1, 2, 1)
-
-world.renderBlock(1, 1, 1, 0.375, 0, 0, 0.25, 1, 1)
-world.renderBlock(1, 1, 2, 0, 0, 0, 1, 1, 1)
-*/
-
 export const enemies = new Map()
 export const network = new Network(socket, enemies)
+
+const listener = new THREE.AudioListener()
+camera.add(listener)
+export const audio = new Audio(listener)
+audio.loadSound('rifle-single-2', 'audio/rifle-single-2.mp3')
+audio.loadSound('rifle-reload-mag-out', 'audio/rifle-reload-mag-out.mp3')
+audio.loadSound('rifle-reload-mag-in', 'audio/rifle-reload-mag-in.mp3')
+audio.loadSound('casing-hitting-ground', 'audio/casing-hitting-ground.mp3')
+audio.loadSound('stun-grenade', 'audio/stun-grenade.mp3', true)
+audio.loadSound('frag-grenade', 'audio/frag-grenade.mp3', true)
+
 const loader = new GLTFLoader()
 
 socket.on('game-state-update', data => {
@@ -98,7 +76,7 @@ socket.on('game-state-update', data => {
                         }
                     }
                 })
-                const enemy = new Enemy(model, scene, player.height)
+                const enemy = new Enemy(model, scene, player.height, player.radius)
                 enemy.mesh.userData.objectType = 'enemy'
                 enemy.mesh.userData.id = id
                 enemies.set(id, enemy)
@@ -108,10 +86,9 @@ socket.on('game-state-update', data => {
             const enemy = enemies.get(id)
             if (enemy == 'loading') return
             const mesh = enemy.mesh
-            mesh.rotation.y = yrot
-            enemy.yrot = yrot
             enemy.rotation.set(...rotation)
             enemy.interpolatePositions(position)
+            enemy.interpolateRotations(yrot)
 
             enemy.updateState(state)
         }
@@ -122,7 +99,6 @@ socket.on('game-state-update', data => {
 
 socket.on('player-hit-confirmed', (data) => {
     const [id, position] = data
-    return
     particles.bloodEffect(new THREE.Vector3(...position))
 })
 
@@ -162,6 +138,7 @@ function animate() {
 
     const currentTime = performance.now();
     const dt = (currentTime - previousTime) / 1000;
+
 
     physics.update(dt)
     graphics.update()

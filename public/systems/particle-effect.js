@@ -1,14 +1,17 @@
 import * as THREE from '../imports/three.module.js'
 import { Entity } from '../components/entity.js'
-import { entities } from '../main.js'
+import { audio, entities, physics, userInterface } from '../main.js'
+import { RigidBody } from '../components/rigid-body.js'
 
 
 export class ParticleEffect {
-    constructor (scene) {
+    constructor (scene, camera) {
         this.scene = scene
+        this.camera = camera
 
         this.entities = []
         this.grenadeParticles = []
+        this.bulletMarkParticles = []
     }
 
     bloodEffect(position) {
@@ -44,7 +47,7 @@ export class ParticleEffect {
             this.scene.add(mesh)
             this.entities.push(entity)
 
-            const dt = 10, time = 5000
+            const dt = 10, time = 10000
             let t = 0
 
             const interval = setInterval(() => {
@@ -55,7 +58,6 @@ export class ParticleEffect {
                 }
                 const progress = t / time
                 const opacityDistance = mesh.material.opacity
-                console.log(opacityDistance * progress)
 
                 t += dt
 
@@ -64,15 +66,17 @@ export class ParticleEffect {
         }
     }
 
-    bulletWallCollision(position, normal) {
+    bulletWallCollision(position) {
         for (let i = 0; i < 5; i++) {
             const n = Math.random() * 0.2
             function w() {
-                return 0.1 + Math.random() * 0.1
+                return 0.01 + Math.random() * 0.1
             }
             const geometry = new THREE.BoxGeometry(w(), w(), w())
             const material = new THREE.MeshLambertMaterial({
                 color: new THREE.Color(n, n, n),
+                transparent: true,
+                opacity: 1,
             })
             const mesh = new THREE.Mesh(geometry, material)
             mesh.rotation.set(
@@ -80,20 +84,32 @@ export class ParticleEffect {
                 Math.random() * Math.PI * 2, 
                 Math.random() * Math.PI * 2
             )
-
+            
             const entity = new Entity()
             entity.mesh = mesh
             entity.position.copy(position)
-            entity.velocity.set(Math.random(), 2, Math.random())
-            entity.acceleration.set(0, -10, 0)
+            entity.velocity.set(Math.random() * 0.5, Math.random() * 0.5 - 0.2, Math.random() * 0.5)
+            entity.acceleration.set(0, -2, 0)
 
             this.scene.add(mesh)
             this.entities.push(entity)
-            
-            setTimeout(() => {
-                this.entities.splice(this.entities.indexOf(entity), 1)
-                this.scene.remove(mesh)
-            }, 2000)
+
+            const time = 5000, dt = 10
+            let t = 0
+            const interval = setInterval(() => {
+                if (t >= time) {
+                    clearInterval(interval)
+                    this.entities.splice(this.entities.indexOf(entity), 1)
+                    this.scene.remove(mesh)
+                    return
+                }
+
+                const progress = t / time
+                const opacityDistance = mesh.material.opacity
+
+                mesh.material.opacity -= opacityDistance * progress
+                t += dt
+            }, dt)
         }
 
         const width = 0.05 + Math.random() * 0.05;
@@ -105,27 +121,15 @@ export class ParticleEffect {
         });
         const bulletMark = new THREE.Mesh(geometry, material);
 
-        // Set position to the intersection point
         bulletMark.position.copy(position);
-
-        const upVector = new THREE.Vector3(0, 1, 0); // Define the up vector
-
-        // Calculate the rotation needed to align the bullet mark
-        const quaternion = new THREE.Quaternion().setFromUnitVectors(upVector, normal);
-        bulletMark.quaternion.multiplyQuaternions(quaternion, bulletMark.quaternion); // Apply rotation
-
-        const randomAngle = Math.random() * Math.PI * 2; // Random angle between 0 and 2π
-
-        // Create a rotation quaternion around the normal
-        const rotationAroundNormal = new THREE.Quaternion().setFromAxisAngle(normal, randomAngle);
-        
-        // Apply the additional random rotation
-        bulletMark.quaternion.multiplyQuaternions(rotationAroundNormal, bulletMark.quaternion);
         this.scene.add(bulletMark);
+
+        this.bulletMarkParticles.push(bulletMark)
 
 
         setTimeout(() => {
             this.scene.remove(bulletMark)
+            this.bulletMarkParticles.splice(this.bulletMarkParticles.indexOf(bulletMark), 1)
         }, 5000)
     }
 
@@ -191,7 +195,7 @@ export class ParticleEffect {
         group.add(cube(new THREE.Vector3(0, -Math.random() * 2 - 2, 0)))
 
         const lightPosition = group.position.clone().add(new THREE.Vector3(-0.2, -4, 0))
-        const light = new THREE.PointLight(new THREE.Color(1, 1, 1), 50)
+        const light = new THREE.PointLight(new THREE.Color(1, 1, 1), 10)
         light.position.copy(lightPosition.clone())
         group.add(light)
         setTimeout(() => {
@@ -220,24 +224,26 @@ export class ParticleEffect {
 
     grenadeExplosion(position) {
         function newParticle() {
-            const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2)
+            const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5)
             const material = new THREE.MeshLambertMaterial({color: 0xffffff, transparent: true})
             const mesh = new THREE.Mesh(geometry, material)
-            mesh.position.copy(position)
             return mesh
         }
-        for (let i = 0; i < 200; i++) {
+        for (let i = 0; i < 100; i++) {
             const mesh = newParticle()
-            mesh.scale.setScalar(Math.random() * 2 + 0.5)
+            mesh.scale.setScalar(Math.random() * 1 + 0.5)
 
+            
             const particle = new Entity()
             particle.add(mesh)
             particle.timeToLive = 4000
             const direction = new THREE.Vector3(Math.random() * 2 - 1, Math.random() + 0.5, Math.random() * 2 - 1).multiplyScalar(0.1)
-            particle.position.copy(direction.clone())
-            particle.velocity.copy(direction.clone().multiplyScalar(Math.random() * 20 + 2))
+            particle.position.copy(position.clone())
+            particle.velocity.copy(direction.clone().multiplyScalar(Math.random() * 100 + 2))
             particle.acceleration.y = -1
             mesh.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2)
+
+            
 
             particle.userData.s0 = particle.position.clone()
             particle.userData.t0 = 0
@@ -247,12 +253,38 @@ export class ParticleEffect {
             } else {
                 particle.userData.type = 'yellow'
             }
+            
             entities.push(particle)
             this.grenadeParticles.push(particle)
 
             this.scene.add(particle)
             
+
+            
+            /*
+            const direction = new THREE.Vector3(Math.random() * 2 - 1, Math.random() + 0.5, Math.random() * 2 - 1).multiplyScalar(0.1)
+            const velocity = direction.clone().multiplyScalar(Math.random() * 100 + 2)
+
+            const rigidBody = new RigidBody(position.clone().add(new THREE.Vector3(0, 0.5, 0)), velocity.clone(), 0, mesh.geometry.parameters.height / 2 * mesh.scale.y, mesh)
+            rigidBody.timeToLive = 3000
+            rigidBody.dampingScale = 2
+            physics.addRigidBody(rigidBody)
+            this.scene.add(rigidBody)
+            
+            
+            setTimeout(() => {
+                physics.removeRigidBody(rigidBody)
+                this.scene.remove(rigidBody)
+            }, rigidBody.timeToLive)
+            */
+
+            
         }
+    }
+
+    stunGrenadeExplosion(position) {
+        audio.playPositionalAudio('stun-grenade', position.x, position.y, position.z)
+        userInterface.stunGrenadeEffect()
     }
 
     updateGrenadeParticles(dt) {
@@ -309,6 +341,11 @@ export class ParticleEffect {
     update(dt) {
         this.entities.forEach(entity => {
             entity.update(dt)
+        })
+
+        this.bulletMarkParticles.forEach(particle => {
+            particle.lookAt(this.camera.position.clone())
+            particle.rotateX(Math.PI / 2)
         })
 
         this.updateGrenadeParticles(dt)
